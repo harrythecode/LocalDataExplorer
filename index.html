@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="ja" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Local XML/JSON Viewer - Secure, Offline Data Parsing Tool</title>
+    <meta name="description" content="Free, secure, and offline XML and JSON viewer and parser. No data sent to servers - all processing done locally in your browser for maximum privacy and security.">
+    <meta name="keywords" content="XML viewer, JSON viewer, offline tool, data parser, local processing, secure viewer">
+    <meta name="author" content="harrythecode">
+    <meta name="robots" content="index, follow">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+        }
+    </script>
+</head>
+<body class="h-full bg-gray-50 text-gray-900 dark:bg-gray-900 dark:text-gray-100">
+    <div class="min-h-full flex flex-col">
+        <nav class="bg-blue-600 dark:bg-blue-800">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                <div class="flex items-center justify-between h-16">
+                    <div class="flex items-center">
+                        <h1 class="text-white text-2xl font-bold">Local XML/JSON Viewer</h1>
+                        <p class="text-blue-200 ml-4 text-sm">No data is sent to any server. Everything is kept secure locally in your browser.</p>
+                    </div>
+                    <select id="themeSelector" class="bg-blue-500 dark:bg-blue-700 text-white px-3 py-2 rounded-md text-sm font-medium">
+                        <option value="light">Light Theme</option>
+                        <option value="dark">Dark Theme</option>
+                    </select>
+                </div>
+            </div>
+        </nav>
+
+        <main class="flex-grow flex flex-col md:flex-row">
+            <div id="sidebar" class="w-full md:w-1/3 lg:w-1/4 bg-white dark:bg-gray-800 border-r border-gray-200 dark:border-gray-700 p-4 flex flex-col" style="height: calc(100vh - 4rem);">
+                <h2 class="text-xl font-semibold mb-2">Structure</h2>
+                <div class="flex space-x-2 mb-2">
+                    <button id="expandAll" class="bg-blue-500 text-white px-2 py-1 rounded text-sm">Expand All</button>
+                    <button id="collapseAll" class="bg-blue-500 text-white px-2 py-1 rounded text-sm">Collapse All</button>
+                </div>
+                <div id="treeView" class="text-sm overflow-auto flex-grow"></div>
+            </div>
+
+            <div class="w-full md:w-2/3 lg:w-3/4 flex flex-col" style="height: calc(100vh - 4rem);">
+                <div class="bg-white dark:bg-gray-800 shadow-sm p-6 border-b border-gray-200 dark:border-gray-700">
+                    <h2 class="text-xl font-semibold mb-3">Input</h2>
+                    <textarea id="textInput" rows="5" class="w-full p-3 border rounded-md resize-vertical focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-100" placeholder="Paste your XML or JSON here"></textarea>
+                    <div id="errorMessage" class="text-red-500 mt-2 text-sm"></div>
+                </div>
+
+                <div class="flex-grow overflow-auto bg-gray-50 dark:bg-gray-900 p-6">
+                    <div class="bg-white dark:bg-gray-800 shadow-lg rounded-lg p-6">
+                        <h2 class="text-xl font-semibold mb-4">Hierarchical View</h2>
+                        <div id="breadcrumb" class="text-sm mb-4 text-blue-600 dark:text-blue-400"></div>
+                        <div id="currentLevel" class="space-y-4"></div>
+                        <button id="copyButton" class="mt-6 bg-blue-500 dark:bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-opacity-80 focus:outline-none focus:ring-2 focus:ring-blue-300 transition duration-150 ease-in-out">
+                            📋 Copy Current Value and Path
+                        </button>
+                        <div id="statusMessage" class="mt-2 text-sm"></div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        let currentData = null;
+        let currentPath = [];
+        let treeViewState = new Map();
+
+        const debounce = (func, delay) => {
+            let timeout;
+            return (...args) => {
+                clearTimeout(timeout);
+                timeout = setTimeout(() => func(...args), delay);
+            };
+        };
+
+        const parseInput = () => {
+            const input = document.getElementById('textInput').value.trim();
+            const errorMessage = document.getElementById('errorMessage');
+            errorMessage.textContent = '';
+
+            if (!input) {
+                currentData = null;
+                updateView();
+                return;
+            }
+
+            try {
+                currentData = input.startsWith('<') ? parseXML(input) : JSON.parse(input);
+                currentPath = [];
+                updateView();
+            } catch (error) {
+                console.error('Parsing error:', error);
+                errorMessage.textContent = `Error: ${error.message}`;
+            }
+        };
+
+        const parseXML = (input) => {
+            const parser = new DOMParser();
+            const xmlDoc = parser.parseFromString(input, "text/xml");
+            if (xmlDoc.getElementsByTagName("parsererror").length > 0) {
+                throw new Error("Invalid XML");
+            }
+            return xmlToJson(xmlDoc.documentElement);
+        };
+
+        const xmlToJson = (xml) => {
+            if (xml.nodeType === 3) return xml.nodeValue.trim();
+
+            let obj = {};
+            if (xml.attributes) {
+                for (let attr of xml.attributes) {
+                    obj[`@${attr.nodeName}`] = attr.nodeValue;
+                }
+            }
+
+            for (let child of xml.childNodes) {
+                if (child.nodeType === 3) {
+                    const text = child.nodeValue.trim();
+                    if (text) {
+                        return xml.childNodes.length === 1 ? text : { '#text': text };
+                    }
+                } else {
+                    const childJson = xmlToJson(child);
+                    if (obj[child.nodeName]) {
+                        if (!Array.isArray(obj[child.nodeName])) {
+                            obj[child.nodeName] = [obj[child.nodeName]];
+                        }
+                        obj[child.nodeName].push(childJson);
+                    } else {
+                        obj[child.nodeName] = childJson;
+                    }
+                }
+            }
+
+            return obj;
+        };
+
+        const updateView = () => {
+            updateBreadcrumb();
+            renderCurrentLevel();
+            updateTreeView();
+            updatePathDisplay();
+        };
+
+        const updateBreadcrumb = () => {
+            const breadcrumb = document.getElementById('breadcrumb');
+            breadcrumb.innerHTML = '';
+            
+            const createBreadcrumbItem = (text, path) => {
+                const span = document.createElement('span');
+                span.textContent = text;
+                span.className = 'cursor-pointer hover:underline';
+                span.onclick = () => {
+                    currentPath = path;
+                    updateView();
+                };
+                return span;
+            };
+
+            breadcrumb.appendChild(createBreadcrumbItem('root', []));
+            currentPath.forEach((key, index) => {
+                breadcrumb.appendChild(document.createTextNode(' > '));
+                breadcrumb.appendChild(createBreadcrumbItem(key, currentPath.slice(0, index + 1)));
+            });
+        };
+
+        const renderCurrentLevel = () => {
+            const currentLevel = document.getElementById('currentLevel');
+            currentLevel.innerHTML = '';
+
+            if (!currentData) return;
+
+            let currentObj = getCurrentObject();
+            
+            if (typeof currentObj !== 'object' || currentObj === null) {
+                const valueElem = document.createElement('p');
+                valueElem.className = 'text-sm bg-gray-100 dark:bg-gray-700 p-3 rounded-md';
+                valueElem.textContent = JSON.stringify(currentObj);
+                currentLevel.appendChild(valueElem);
+                return;
+            }
+
+            for (const [key, value] of Object.entries(currentObj)) {
+                const section = document.createElement('details');
+                section.className = 'bg-gray-100 dark:bg-gray-700 p-4 rounded-lg';
+                section.open = true;
+
+                const summary = document.createElement('summary');
+                summary.className = 'font-semibold cursor-pointer';
+                summary.textContent = key;
+                section.appendChild(summary);
+
+                const content = document.createElement('div');
+                content.className = 'mt-2';
+
+                if (typeof value !== 'object' || value === null) {
+                    const valueElem = document.createElement('p');
+                    valueElem.className = 'text-sm';
+                    valueElem.textContent = JSON.stringify(value);
+                    content.appendChild(valueElem);
+                } else {
+                    const exploreButton = document.createElement('button');
+                    exploreButton.className = 'bg-blue-500 dark:bg-blue-600 text-white px-3 py-1 rounded-md hover:bg-opacity-80 transition duration-150 ease-in-out';
+                    exploreButton.textContent = Array.isArray(value) ? `Explore Array(${value.length})` : 'Explore Object';
+                    exploreButton.onclick = () => {
+                        currentPath.push(key);
+                        updateView();
+                    };
+                    content.appendChild(exploreButton);
+                }
+
+                section.appendChild(content);
+                currentLevel.appendChild(section);
+            }
+        };
+
+        const updateTreeView = () => {
+            console.log("Updating tree view");
+            console.log("Current treeViewState:", Object.fromEntries(treeViewState));
+            
+            const treeView = document.getElementById('treeView');
+            treeView.innerHTML = '';
+
+            // Add this check
+            if (!currentData) {
+                console.log("No data to display in tree view");
+                return;
+            }
+
+            const renderTree = (obj, path = []) => {
+                const ul = document.createElement('ul');
+                ul.className = 'pl-4 space-y-2';
+
+                for (const [key, value] of Object.entries(obj)) {
+                    const li = document.createElement('li');
+                    const pathString = path.concat(key).join('.');
+                    
+                    if (typeof value === 'object' && value !== null) {
+                        const details = document.createElement('details');
+                        details.open = treeViewState.get(pathString) !== false; // デフォルトは開いた状態
+                        
+                        const summary = document.createElement('summary');
+                        summary.className = 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded-md';
+                        summary.textContent = key;
+                        
+                        details.appendChild(summary);
+                        details.appendChild(renderTree(value, path.concat(key)));
+                        
+                        details.addEventListener('toggle', () => {
+                            treeViewState.set(pathString, details.open);
+                        });
+                        
+                        li.appendChild(details);
+                    } else {
+                        const button = document.createElement('button');
+                        button.className = 'w-full text-left px-2 py-1 rounded-md transition-colors duration-200 ease-in-out ' +
+                                   'hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300';
+                        
+                        if (JSON.stringify(path.concat(key)) === JSON.stringify(currentPath)) {
+                            button.className += ' bg-blue-100 dark:bg-blue-900 font-semibold';
+                        }
+
+                        button.textContent = `${key}: ${JSON.stringify(value)}`;
+                        button.onclick = () => {
+                            currentPath = path.concat(key);
+                            updateView();
+                        };
+
+                        li.appendChild(button);
+                    }
+
+                    ul.appendChild(li);
+                }
+
+                return ul;
+            };
+
+            treeView.appendChild(renderTree(currentData));
+        };
+
+        const getCurrentObject = () => {
+            return currentPath.reduce((obj, key) => 
+                (obj && typeof obj === 'object') ? (Array.isArray(obj) ? obj[parseInt(key)] : obj[key]) : obj,
+                currentData
+            );
+        };
+
+        const updatePathDisplay = () => {
+            const currentObj = getCurrentObject();
+            const pathString = currentPath.join(' > ');
+            const valueString = JSON.stringify(currentObj, null, 2);
+            
+            const pathDisplay = document.createElement('div');
+            pathDisplay.className = 'mt-6 p-4 bg-gray-100 dark:bg-gray-700 rounded-md';
+            pathDisplay.innerHTML = `
+                <div class="font-semibold">Current Path:</div>
+                <div class="text-sm text-blue-600 dark:text-blue-400">${pathString}</div>
+                <div class="font-semibold mt-3">Current Value:</div>
+                <pre class="text-sm overflow-auto bg-white dark:bg-gray-800 p-2 rounded-md mt-1">${valueString}</pre>
+            `;
+            
+            const currentLevel = document.getElementById('currentLevel');
+            const existingPathDisplay = currentLevel.querySelector('.mt-6.p-4');
+            if (existingPathDisplay) {
+                currentLevel.removeChild(existingPathDisplay);
+            }
+            currentLevel.appendChild(pathDisplay);
+        };
+
+        const copyButton = document.getElementById('copyButton');
+        const statusMessage = document.getElementById('statusMessage');
+
+        copyButton.addEventListener('click', () => {
+            const currentObj = getCurrentObject();
+            const pathString = currentPath.join(' > ');
+            const copyText = `Path: ${pathString}\nValue: ${JSON.stringify(currentObj, null, 2)}`;
+            
+            navigator.clipboard.writeText(copyText).then(() => {
+                statusMessage.textContent = 'Copied to clipboard!';
+                statusMessage.className = 'mt-2 text-sm text-green-500 dark:text-green-400';
+                setTimeout(() => {
+                    statusMessage.textContent = '';
+                }, 3000);
+            }).catch(err => {
+                statusMessage.textContent = 'Failed to copy: ' + err;
+                statusMessage.className = 'mt-2 text-sm text-red-500 dark:text-red-400';
+            });
+        });
+
+        document.getElementById('textInput').addEventListener('input', debounce(parseInput, 300));
+
+        // Theme selector
+        const themeSelector = document.getElementById('themeSelector');
+        themeSelector.addEventListener('change', (e) => {
+            if (e.target.value === 'dark') {
+                document.documentElement.classList.add('dark');
+            } else {
+                document.documentElement.classList.remove('dark');
+            }
+        });
+
+        // Check for saved theme preference or use system preference
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            document.documentElement.classList.add('dark');
+            themeSelector.value = 'dark';
+        } else {
+            document.documentElement.classList.remove('dark');
+            themeSelector.value = 'light';
+        }
+
+        // Save theme preference when changed
+        themeSelector.addEventListener('change', (e) => {
+            localStorage.setItem('theme', e.target.value);
+        });
+
+        // Initial parse
+        parseInput();
+
+        // DOMContentLoaded イベントリスナーを追加
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log("DOM fully loaded and parsed");
+
+            const expandAll = document.getElementById('expandAll');
+            const collapseAll = document.getElementById('collapseAll');
+
+            console.log("expandAll button:", expandAll);
+            console.log("collapseAll button:", collapseAll);
+
+            if (expandAll) {
+                expandAll.addEventListener('click', () => {
+                    console.log("Expand All clicked");
+                    treeViewState.clear();
+                    updateTreeView();
+                });
+            } else {
+                console.error("Expand All button not found");
+            }
+
+            if (collapseAll) {
+                collapseAll.addEventListener('click', () => {
+                    console.log("Collapse All clicked");
+                    treeViewState.clear();
+                    const setAllClosed = (obj, path = []) => {
+                        for (const key of Object.keys(obj)) {
+                            const newPath = path.concat(key);
+                            treeViewState.set(newPath.join('.'), false);
+                            if (typeof obj[key] === 'object' && obj[key] !== null) {
+                                setAllClosed(obj[key], newPath);
+                            }
+                        }
+                    };
+                    setAllClosed(currentData);
+                    console.log("After collapse, treeViewState:", Object.fromEntries(treeViewState));
+                    updateTreeView();
+                });
+            } else {
+                console.error("Collapse All button not found");
+            }
+        });
+    </script>
+</body>
+</html>

@@ -12,6 +12,8 @@ const debounce = (func, delay) => {
     };
 };
 
+const wrapTextClass = 'whitespace-pre-wrap break-words overflow-auto';
+
 const parseInput = () => {
     const input = $('textInput').value.trim();
     const errorMessage = $('errorMessage');
@@ -84,7 +86,7 @@ const updateView = () => {
     updateTreeView();
     updatePathDisplay();
     
-    // 入力が空の場合、Hierarchical Viewをクリ���
+    // Clear Hierarchical View when input is empty
     if (!currentData) {
         $('treeView').innerHTML = '';
         $('currentLevel').innerHTML = '';
@@ -124,7 +126,7 @@ const renderCurrentLevel = () => {
     
     if (typeof currentObj !== 'object' || currentObj === null) {
         const valueElem = document.createElement('pre');
-        valueElem.className = 'text-sm bg-gray-100 dark:bg-gray-700 p-3 rounded-md whitespace-pre-wrap break-words overflow-auto';
+        valueElem.className = `text-sm bg-gray-100 dark:bg-gray-700 p-3 rounded-md ${wrapTextClass}`;
         valueElem.textContent = formatValue(currentObj);
         currentLevel.appendChild(valueElem);
         return;
@@ -132,21 +134,26 @@ const renderCurrentLevel = () => {
 
     for (const [key, value] of Object.entries(currentObj)) {
         const section = document.createElement('details');
-        section.className = 'bg-gray-100 dark:bg-gray-700 p-4 rounded-lg';
+        section.className = 'bg-gray-100 dark:bg-gray-700 p-4 rounded-lg mb-2';
         section.open = true;
 
         const summary = document.createElement('summary');
         summary.className = 'font-semibold cursor-pointer';
-        summary.textContent = key;
+
+        const summaryContent = document.createElement('div');
+        summaryContent.className = `${wrapTextClass}`;
+        summaryContent.textContent = `${key}`;
+        summary.appendChild(summaryContent);
+
         section.appendChild(summary);
 
         const content = document.createElement('div');
         content.className = 'mt-2';
 
         if (typeof value !== 'object' || value === null) {
-            const valueElem = document.createElement('p');
-            valueElem.className = 'text-sm';
-            valueElem.textContent = JSON.stringify(value);
+            const valueElem = document.createElement('pre');
+            valueElem.className = `text-sm ${wrapTextClass}`;
+            valueElem.textContent = formatValue(value);
             content.appendChild(valueElem);
         } else {
             const exploreButton = document.createElement('button');
@@ -168,7 +175,12 @@ const formatValue = (value) => {
     if (typeof value === 'string') {
         return value;
     }
-    return JSON.stringify(value, null, 2);
+    if (typeof value === 'object' && value !== null) {
+        return JSON.stringify(value, null, 2)
+            .replace(/"([^"]+)":/g, '$1:')
+            .replace(/^/gm, '  ');
+    }
+    return String(value);
 };
 
 const updateTreeView = () => {
@@ -191,7 +203,7 @@ const updateTreeView = () => {
                 itemContainer.className = 'flex items-center space-x-2';
 
                 const toggleButton = document.createElement('button');
-                toggleButton.className = 'w-6 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded';
+                toggleButton.className = 'w-6 h-6 flex items-center justify-center bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 rounded';
                 toggleButton.innerHTML = treeViewState.get(currentPathString) !== false ? '▼' : '▶';
                 toggleButton.onclick = (event) => {
                     event.stopPropagation();
@@ -207,6 +219,12 @@ const updateTreeView = () => {
                     currentPath = path.concat(key);
                     updateView();
                 };
+                label.ondblclick = (event) => {
+                    event.stopPropagation();
+                    const isOpen = treeViewState.get(currentPathString) !== false;
+                    treeViewState.set(currentPathString, !isOpen);
+                    updateTreeView();
+                };
 
                 itemContainer.appendChild(toggleButton);
                 itemContainer.appendChild(label);
@@ -217,10 +235,11 @@ const updateTreeView = () => {
                 }
             } else {
                 const button = document.createElement('button');
+                // Note: We don't use wrapTextClass here to maintain the tree structure
                 button.className = `w-full text-left px-2 py-1 rounded-md transition-colors duration-200 ease-in-out 
                            hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300
                            ${isCurrentPath ? 'bg-blue-100 dark:bg-blue-900 font-semibold' : ''}`;
-                button.textContent = `${key}: ${JSON.stringify(value)}`;
+                button.textContent = `${key}: ${formatValue(value)}`;
                 button.onclick = () => {
                     currentPath = path.concat(key);
                     updateView();
@@ -254,9 +273,9 @@ const updatePathDisplay = () => {
     pathDisplay.className = 'mt-6 p-4 bg-gray-100 dark:bg-gray-700 rounded-md';
     pathDisplay.innerHTML = `
         <div class="font-semibold">Current Path:</div>
-        <div class="text-sm text-blue-600 dark:text-blue-400">${pathString}</div>
+        <div class="text-sm text-blue-600 dark:text-blue-400 ${wrapTextClass}">${pathString}</div>
         <div class="font-semibold mt-3">Current Value:</div>
-        <pre class="text-sm overflow-auto bg-white dark:bg-gray-800 p-2 rounded-md mt-1 whitespace-pre-wrap break-words">${valueString}</pre>
+        <pre class="text-sm overflow-auto bg-white dark:bg-gray-800 p-2 rounded-md mt-1 ${wrapTextClass}">${valueString}</pre>
     `;
     
     const currentLevel = $('currentLevel');

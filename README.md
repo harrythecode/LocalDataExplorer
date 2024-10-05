@@ -37,6 +37,8 @@ While currently supporting XML and JSON, LocalDataExplorer is designed with exte
 2. Open `index.html` in your preferred browser
 3. Start exploring your data!
 
+Alternatively, you can try the online demo: [LocalDataExplorer Demo](https://harrythecode.github.io/LocalDataExplorer/)
+
 ## 🤝 Contributing
 
 We welcome contributions! Whether it's feature requests, bug reports, or code contributions, please feel free to reach out or submit a pull request.

@@ -38,6 +38,7 @@
                 <div class="flex space-x-2 mb-2">
                     <button id="expandAll" class="bg-blue-500 text-white px-2 py-1 rounded text-sm">Expand All</button>
                     <button id="collapseAll" class="bg-blue-500 text-white px-2 py-1 rounded text-sm">Collapse All</button>
+                    <button id="jumpToSelected" class="bg-blue-500 text-white px-2 py-1 rounded text-sm">Jump to Selected</button>
                 </div>
                 <div id="treeView" class="text-sm overflow-auto flex-grow"></div>
             </div>
@@ -225,7 +226,6 @@
             const treeView = document.getElementById('treeView');
             treeView.innerHTML = '';
 
-            // Add this check
             if (!currentData) {
                 console.log("No data to display in tree view");
                 return;
@@ -237,22 +237,40 @@
 
                 for (const [key, value] of Object.entries(obj)) {
                     const li = document.createElement('li');
-                    const pathString = path.concat(key).join('.');
+                    const currentPathString = path.concat(key).join('.');
+                    const isCurrentPath = JSON.stringify(path.concat(key)) === JSON.stringify(currentPath);
                     
                     if (typeof value === 'object' && value !== null) {
                         const details = document.createElement('details');
-                        details.open = treeViewState.get(pathString) !== false; // デフォルトは開いた状態
+                        details.open = treeViewState.get(currentPathString) !== false || isCurrentPath; 
                         
                         const summary = document.createElement('summary');
                         summary.className = 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded-md';
+                        if (isCurrentPath) {
+                            summary.className += ' bg-blue-100 dark:bg-blue-900 font-semibold';
+                        }
                         summary.textContent = key;
+                        
+                        let clickTimer = null;
+                        summary.addEventListener('click', (event) => {
+                            event.preventDefault();
+                            if (clickTimer === null) {
+                                clickTimer = setTimeout(() => {
+                                    currentPath = path.concat(key);
+                                    updateView();
+                                    clickTimer = null;
+                                }, 200);
+                            } else {
+                                clearTimeout(clickTimer);
+                                clickTimer = null;
+                                details.open = !details.open;
+                                treeViewState.set(currentPathString, details.open);
+                                updateTreeView(); // 再描画して選択状態を反映
+                            }
+                        });
                         
                         details.appendChild(summary);
                         details.appendChild(renderTree(value, path.concat(key)));
-                        
-                        details.addEventListener('toggle', () => {
-                            treeViewState.set(pathString, details.open);
-                        });
                         
                         li.appendChild(details);
                     } else {
@@ -260,7 +278,7 @@
                         button.className = 'w-full text-left px-2 py-1 rounded-md transition-colors duration-200 ease-in-out ' +
                                    'hover:bg-gray-100 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-300';
                         
-                        if (JSON.stringify(path.concat(key)) === JSON.stringify(currentPath)) {
+                        if (isCurrentPath) {
                             button.className += ' bg-blue-100 dark:bg-blue-900 font-semibold';
                         }
 
@@ -400,6 +418,21 @@
                 });
             } else {
                 console.error("Collapse All button not found");
+            }
+
+            const jumpToSelected = () => {
+                const treeView = document.getElementById('treeView');
+                const selectedElement = treeView.querySelector('.bg-blue-100.dark\\:bg-blue-900');
+                if (selectedElement) {
+                    selectedElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
+            };
+
+            const jumpToSelectedButton = document.getElementById('jumpToSelected');
+            if (jumpToSelectedButton) {
+                jumpToSelectedButton.addEventListener('click', jumpToSelected);
+            } else {
+                console.error("Jump to Selected button not found");
             }
         });
     </script>

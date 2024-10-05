@@ -221,7 +221,6 @@
 
         const updateTreeView = () => {
             console.log("Updating tree view");
-            console.log("Current treeViewState:", Object.fromEntries(treeViewState));
             
             const treeView = document.getElementById('treeView');
             treeView.innerHTML = '';
@@ -241,38 +240,37 @@
                     const isCurrentPath = JSON.stringify(path.concat(key)) === JSON.stringify(currentPath);
                     
                     if (typeof value === 'object' && value !== null) {
-                        const details = document.createElement('details');
-                        details.open = treeViewState.get(currentPathString) !== false || isCurrentPath; 
-                        
-                        const summary = document.createElement('summary');
-                        summary.className = 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded-md';
+                        const itemContainer = document.createElement('div');
+                        itemContainer.className = 'flex items-center space-x-2';
+
+                        const toggleButton = document.createElement('button');
+                        toggleButton.className = 'w-6 h-6 flex items-center justify-center bg-gray-200 hover:bg-gray-300 rounded';
+                        toggleButton.innerHTML = treeViewState.get(currentPathString) !== false ? '▼' : '▶';
+                        toggleButton.onclick = (event) => {
+                            event.stopPropagation();
+                            const isOpen = treeViewState.get(currentPathString) !== false;
+                            treeViewState.set(currentPathString, !isOpen);
+                            updateTreeView();
+                        };
+
+                        const label = document.createElement('span');
+                        label.className = 'cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 px-2 py-1 rounded-md flex-grow';
                         if (isCurrentPath) {
-                            summary.className += ' bg-blue-100 dark:bg-blue-900 font-semibold';
+                            label.className += ' bg-blue-100 dark:bg-blue-900 font-semibold';
                         }
-                        summary.textContent = key;
-                        
-                        let clickTimer = null;
-                        summary.addEventListener('click', (event) => {
-                            event.preventDefault();
-                            if (clickTimer === null) {
-                                clickTimer = setTimeout(() => {
-                                    currentPath = path.concat(key);
-                                    updateView();
-                                    clickTimer = null;
-                                }, 200);
-                            } else {
-                                clearTimeout(clickTimer);
-                                clickTimer = null;
-                                details.open = !details.open;
-                                treeViewState.set(currentPathString, details.open);
-                                updateTreeView(); // 再描画して選択状態を反映
-                            }
-                        });
-                        
-                        details.appendChild(summary);
-                        details.appendChild(renderTree(value, path.concat(key)));
-                        
-                        li.appendChild(details);
+                        label.textContent = key;
+                        label.onclick = () => {
+                            currentPath = path.concat(key);
+                            updateView();
+                        };
+
+                        itemContainer.appendChild(toggleButton);
+                        itemContainer.appendChild(label);
+                        li.appendChild(itemContainer);
+
+                        if (treeViewState.get(currentPathString) !== false) {
+                            li.appendChild(renderTree(value, path.concat(key)));
+                        }
                     } else {
                         const button = document.createElement('button');
                         button.className = 'w-full text-left px-2 py-1 rounded-md transition-colors duration-200 ease-in-out ' +
@@ -391,33 +389,25 @@
 
             if (expandAll) {
                 expandAll.addEventListener('click', () => {
-                    console.log("Expand All clicked");
                     treeViewState.clear();
                     updateTreeView();
                 });
-            } else {
-                console.error("Expand All button not found");
             }
 
             if (collapseAll) {
                 collapseAll.addEventListener('click', () => {
-                    console.log("Collapse All clicked");
-                    treeViewState.clear();
                     const setAllClosed = (obj, path = []) => {
                         for (const key of Object.keys(obj)) {
                             const newPath = path.concat(key);
-                            treeViewState.set(newPath.join('.'), false);
                             if (typeof obj[key] === 'object' && obj[key] !== null) {
+                                treeViewState.set(newPath.join('.'), false);
                                 setAllClosed(obj[key], newPath);
                             }
                         }
                     };
                     setAllClosed(currentData);
-                    console.log("After collapse, treeViewState:", Object.fromEntries(treeViewState));
                     updateTreeView();
                 });
-            } else {
-                console.error("Collapse All button not found");
             }
 
             const jumpToSelected = () => {
